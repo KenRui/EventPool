@@ -28,22 +28,25 @@
 #include "sys/event.h"
 #include <sys/types.h>
 namespace pool{
+	void load(){}
+	void unload(){}
     enum EVENT_TYPE{
         IN_EVT = 1 << 0,
         OUT_EVT = 1 << 1,
         ERR_EVT = 1 << 2,
-        INIT_EVT = 1 << 3,
+        ACCEPT_EVT = 1 << 3,
     };
     class Target{
     public:
         virtual int getHandle() = 0;
+		virtual int getPeerHandle() {return -1;}
     };
     class EventBase{
     public:
         int eventType;
         void delEevnt(int eventType)
         {
-            if (eventType & IN_EVT)
+            if ((eventType & IN_EVT) | (ACCEPT_EVT & eventType))
             {
                 struct kevent kevts[1];
                 EV_SET(&kevts[0], target->getHandle(), EVFILT_READ, EV_DELETE, 0, 0, this);
@@ -61,7 +64,7 @@ namespace pool{
         void addEvent(int eventType)
         {
             this->eventType |= eventType;
-            if (eventType & IN_EVT)
+            if ((eventType & IN_EVT) | (ACCEPT_EVT & eventType))
             {
                 struct kevent kevts[1];
                 EV_SET(&kevts[0], target->getHandle(), EVFILT_READ, EV_ADD, 0, 0, this);
@@ -92,6 +95,10 @@ namespace pool{
         {
             return eventType & ERR_EVT;
         }
+		int getPeerHandle()
+		{
+			return target->getPeerHandle();
+		}
     };
     template<typename TARGET>
     class Event:public EventBase{
@@ -199,7 +206,7 @@ namespace net{
 				return;
 			}
 		}
-		int accept(){
+		int getPeerHandle(){
 			socklen_t clilen = 1024;
 			struct sockaddr_in addr;
 			int con = ::accept(socket,(struct sockaddr*)(&addr),&clilen);

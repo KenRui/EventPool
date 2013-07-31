@@ -2,28 +2,24 @@
 #include "stdio.h"
  int main()
  {
-
+	pool::load();
 	 pool::EventPool pool;
 	 pool.init();
 	 net::Server server("192.168.123.230",5050);
-	 pool::Event<net::Server> *initEvt = new  pool::Event<net::Server>(&server);
-	 initEvt->set(pool::INIT_EVT);
-	 pool.bindEvent(initEvt);
+	 pool.bindEvent(&server,pool::ACCEPT_EVT);
 
 	 while (true) 
 	 {
 		pool::EventBase *evt = pool.pullEvent();
 		if (evt)
 		{
-			if (evt->eventType == pool::INIT_EVT)
+			if (evt->eventType == pool::ACCEPT_EVT)
 			{
 				net::Connection *conn =  new net::Connection();
-				pool::Event<net::Server>* sevt = (pool::Event<net::Server> *)(evt);
-				conn->setHandle((*sevt)->accept());
-
-				pool::Event<net::Connection> *inOutEvt = new pool::Event<net::Connection>(conn);
-				inOutEvt->set(pool::IN_EVT|pool::OUT_EVT);
-				pool.bindEvent(inOutEvt); 
+				
+				conn->setHandle(evt->getPeerHandle());
+				
+				pool.bindEvent(&conn,pool::IN_EVT|pool::OUT_EVT); 
 				printf("add\n");
 			}
 			if (evt->eventType & pool::OUT_EVT) 

@@ -21,15 +21,18 @@
 #include "list"
 #include "stdio.h"
 namespace pool{
+	void load(){}
+	void unload(){}
 	enum EVENT_TYPE{
-		INIT_EVT = 1 << 0, 
+		ACCEPT_EVT = 1 << 0, 
 		OUT_EVT = 1 << 1, 
 		IN_EVT = 1 << 2,
 		ERROR_EVT = 1 << 3,
 	};
 	class Target{
 	public:
-		virtual int getHandle() = 0;	
+		virtual int getHandle() = 0;
+		virtual int getPeerHandle() {return -1;}
 	};
 	class EventBase{
 	public:
@@ -55,7 +58,7 @@ namespace pool{
 			{
 				EventBase::ev.events |= EPOLLOUT;
 			}
-			if (eventType & INIT_EVT)
+			if (eventType & ACCEPT_EVT)
 			{
 				EventBase::ev.events |= EPOLLIN;
 			}
@@ -68,6 +71,10 @@ namespace pool{
 		virtual void leave()
 		{
 			epoll_ctl(poolHandle,EPOLL_CTL_DEL,target->getHandle(),&ev);
+		}
+		int getPeerHandle()
+		{
+			return target->getPeerHandle();
 		}
 	};
 	template<typename TARGET>
@@ -92,8 +99,10 @@ namespace pool{
 			eventBuffer.resize(1024);
 			poolHandle = epoll_create(256);
 		}	
-		void bindEvent(EventBase *evt)
+		void bindEvent(Target *target,int eventType)
 		{
+			Event<Target> *evt = new Event<Target>(target);
+			evt->set(eventType);
 			evt->poolHandle = poolHandle;
 			evt->deal(); // 构建事件 
 			epoll_ctl(poolHandle,EPOLL_CTL_ADD,evt->target->getHandle(),&evt->ev);
@@ -186,7 +195,7 @@ namespace net{
 				return;
 			} 
 		}
-		int accept(){
+		int getPeerHandle(){
 			socklen_t clilen = 1024;
 			struct sockaddr_in addr;
 			int con = ::accept(socket,(struct sockaddr*)(&addr),&clilen);	

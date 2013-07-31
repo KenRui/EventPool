@@ -10,23 +10,23 @@
 #include "KqueuePool.h"
 #include "stdio.h"
 int main(int argc, const char * argv[]){
-    
+    pool::load();
     pool::EventPool pool;
     pool.init();
     net::Server server("127.0.0.1",5050);
     pool::Event<net::Server> *initEvt = new  pool::Event<net::Server>(&server);
-    pool.bindEvent(initEvt,pool::IN_EVT);
+    pool.bindEvent(initEvt,pool::ACCEPT_EVT);
     
     while (true)
     {
 		pool::EventBase *evt = pool.pullEvent();
 		if (evt)
 		{
-			if (evt->eventType == pool::INIT_EVT)
+			if (evt->eventType == pool::ACCEPT_EVT)
 			{
 				net::Connection *conn =  new net::Connection();
-				pool::Event<net::Server>* sevt = (pool::Event<net::Server> *)(evt);
-				conn->setHandle((*sevt)->accept());
+				
+				conn->setHandle(evt->getPeerHandle());
                 
 				pool::Event<net::Connection> *inOutEvt = new pool::Event<net::Connection>(conn);
 				pool.bindEvent(inOutEvt,pool::IN_EVT | pool::OUT_EVT);

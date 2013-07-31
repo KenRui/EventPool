@@ -4,11 +4,22 @@
 #pragma comment(lib,"ws2_32.lib")
  namespace pool{
 	enum EVENT_TYPE{
-		INIT_EVT = 0, // 初始化
-		OUT_EVT = 1, // 读入
-		IN_EVT =2, // 输出
-		ERROR_EVT = 3, // 错误
+		ACCEPT_EVT = 1 << 0, // 初始化
+		OUT_EVT = 1 << 1, // 读入
+		IN_EVT =1 << 2, // 输出
+		ERROR_EVT = 1 << 3, // 错误
 	};
+	void load()
+	{
+		WSADATA wsaData;
+		int nResult;
+		nResult = WSAStartup(MAKEWORD(2,2), &wsaData);
+	}
+	
+	void unload()
+	{
+		
+	}
 	/**
 	 * 目标基类
 	 */
@@ -16,6 +27,7 @@
 	public:
 		virtual HANDLE getHandle() = 0;
 		virtual LPFN_ACCEPTEX getAcceptHandle(){return NULL;}
+		virtual HANDLE getPeerHandle() {return -1;}
 	};
 	/**
 	 * 事件基类
@@ -30,6 +42,7 @@
 		{
 			
 		}
+		virtual HANDLE getPeerHandle() {return -1;}
 	};
 	/**
 	 * 事件
@@ -125,9 +138,9 @@
 	 *  初始化事件
 	 **/
 	template<typename TARGET>
-	class InitEvent:public Event<TARGET>{
+	class AcceptEvent:public Event<TARGET>{
 	public:
-		InitEvent(TARGET *target):Event<TARGET>(target)
+		AcceptEvent(TARGET *target):Event<TARGET>(target)
 		{
 			SOCKET socket = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);  
 			if( INVALID_SOCKET ==  socket)  
@@ -152,6 +165,7 @@
 			}
 		}
 		SOCKET handle;
+		virtual HANDLE getPeerHandle() {return handle;}
 	};
 	/**
 	 * 事件池的封装
@@ -168,10 +182,24 @@
 			return poolHandle != NULL;
 		}
 		HANDLE poolHandle;
-        void bindEvent(EventBase *target)
+        void bindEvent(Target *target,int eventType)
 		{
-			 HANDLE tempHandle = CreateIoCompletionPort((HANDLE)target->target->getHandle(), poolHandle, (DWORD)target->target, 0);
-			 target->deal();
+			 HANDLE tempHandle = CreateIoCompletionPort((HANDLE)target->getHandle(), poolHandle, (DWORD)target, 0);
+			 if (eventType & ACCEPT_EVT)
+			 {
+				AcceptEvent<Target> *initEvent = new AcceptEvent<Target>(target);
+				initEvent->deal();
+			 }
+			 if (eventType & IN_EVT)
+			 {
+				InEvent<Target> *inEvent = new InEvent<Target>(target);
+				inEvent->deal();
+			 }
+			 if (eventType & OUT_EVT)
+			 {
+				OutEvent<Target> *outEvent = new OutEvent<Target>(target);
+				outEvent->deal();
+			 }
 		}
 
 		EventBase* pullEvent()
