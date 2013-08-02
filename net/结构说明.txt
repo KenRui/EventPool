@@ -1,0 +1,25 @@
+Handle.h 根据系统定义socket 的句柄
+
+Connection.h 定义收发字节流
+
+Address.h 提供对网络地址的封装
+
+Client.h 连接到服务器
+
+Server.h 新建服务器
+
+Package.h 定义报文结构
+
+Connection<Package> connection = evt->getConnection();
+
+connection->send(buf,size);
+
+connection->send(); // 实际发送 从缓存中获取信息
+
+connection->pick(buf,size); // 实际接收数据
+
+connection->pick();
+
+
+Package *package = connection->pickPackage(); // 获取完整报文
+

@@ -1,9 +1,9 @@
 #pragma once
 #include "platfrom.h"
 #if PLATFORM == PLATFORM_WIN32
-	#include "iocp/IocpPool.h"
+	#include "thread/WinThread.h"
 #elif PLATFORM == PLATFORM_APPLE
-	#include "kqueue/KqueuePool.h"
+	#include "thread/LinuxThread.h"
 #else
-	#include "epoll/EpollPool.h"
+	#include "thread/LinuxThread.h"
 #endif

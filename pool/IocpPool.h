@@ -7,7 +7,7 @@
 		ACCEPT_EVT = 1 << 0, // 初始化
 		OUT_EVT = 1 << 1, // 读入
 		IN_EVT =1 << 2, // 输出
-		ERROR_EVT = 1 << 3, // 错误
+		ERR_EVT = 1 << 3, // 错误
 	};
 	void load()
 	{
@@ -43,6 +43,19 @@
 			
 		}
 		virtual HANDLE getPeerHandle() {return -1;}
+		
+		bool isIn()
+		{
+			return eventType | IN_EVT;
+		}
+		bool isOut()
+		{
+			return eventType | OUT_EVT;
+		}
+		bool isErr()
+		{
+			return eventType | ERR_EVT;
+		}
 	};
 	/**
 	 * 事件
@@ -228,7 +241,13 @@
 			else  
 			{
 				// 读取传入的参数
-				EventBase* evt = CONTAINING_RECORD(pOverlapped, EventBase, overlapped);  
+				EventBase* evt = CONTAINING_RECORD(pOverlapped, EventBase, overlapped); 
+				evt->dataLen = dataLen;
+				// 根据evt 设置状态
+				if (dataLen == 0 && (evt->isIn() || evt->isOut()))
+				{
+					evt->eventType = ERR_EVT; // 设置出错状态
+				}
 				return evt;
 			}
 			return NULL;
@@ -240,9 +259,107 @@
 	 public:
 		 HANDLE getHandle(){return (HANDLE)socket;}
 		 void setHandle(SOCKET socket){this->socket = socket;}
-		 void send(){}
-		 void read(){}
+		 
+		 /**
+		  * 发送消息
+		  */
+		 void sendCmd(void *cmd,unsigned int len)
+		 {
+			decoder->encode(cmd,len);
+			sends->push_back(decoder->getRecord());
+			doSend();
+		 }
+		 void recvCmdCallback(void *cmd,unsigned int len)
+		 {
+			// 回调中处理消息
+		 }
+		 Decoder decoder;
+		 /** 
+		  * 获取消息
+		  */
+		 unsigned int getCmd(void *cmd,unsigned int len)
+		 {
+			return decoder->recv(this,buffer,MAX_DATALEN);
+		 }
+		 /**
+		  * 将消息接受到缓存
+		  **/
+		 unsigned int copy(void *cmd,unsigned int size)
+		 {
+			unsigned int realcopy = 0;
+			while (recvs.size())
+			{
+				buffer = recvs.front();
+				realcopy = buffer->copy(cmd,size);
+				if (buffer->empty())buffers.pop_front();
+				if (realcopy == size)
+				{
+					return size;
+				}
+			}
+			return realcopy;
+		}
+		unsigned char *pointer;
+		
+		/**
+		 * 在pool 中处理接受
+		 **/
+		void doRead(EventBase *evt)
+		{
+			if (directDealCmd) // 直接处理消息
+			{
+				Buffer buffer(evt->m_wsaBuf.buf,evt->dataLen);
+				decoder.encode(&buffer);
+			}
+			else
+			{
+				Record *buffer = new Record(evt->m_wsaBuf.buf,evt->dataLen);
+				recvs->push_back(buffer);
+				evt->redo();
+				pointer = evt->m_wsaBuf.buf;
+			}
+		}
+		/**
+		 * 在pool 中处理发送
+		 **/
+		void doSend(EventBase *evt)
+		{
+			bool tag = false;
+			while (send.size())
+			{
+				tag = true;
+				Record *record = sends.front();
+				int leftLen = MAX_DATASIZE;
+				unsigned int realCopySize = record->copy(evt->buffer,leftLen);
+				if (leftLen == realCopySize)
+				{
+					if (record->empty())
+					{
+						sends.pop_front();
+					}
+					break;
+				}
+				else
+				{
+					leftLen -= realCopySize;
+					if(!record->empty())
+					{
+						// TODO ERROR
+					}
+					sends.pop_front();
+				}
+			}
+			if (tag)
+				evt->redo();
+			else
+			{
+				evt->delEvent(OUT_EVT);
+			}
+		}
+		 // 当前事件 具有瞬时性
 		 SOCKET socket;
+		 std::list<Record*> recvs;
+		 std::list<Record*> sends;
 	 };
 	 class Server:public pool::Target{
 	 public:
