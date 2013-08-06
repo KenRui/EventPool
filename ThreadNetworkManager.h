@@ -5,7 +5,7 @@ class ThreadNetworkManager;
  * ½ÓÊÜÕß
  */
 class Accept{
-	Accept()
+	Accept(ThreadNetworkManager *tnm):tnm(tnm)
 	{
 		valid = false;
 	}
@@ -52,7 +52,7 @@ class Accept{
  */
 class Worker:public Thread{
 public:
-	Worker()
+	Worker():(ThreadNetworkManager *tnm):tnm(tnm)
 	{
 		valid = false;
 	}
@@ -98,7 +98,7 @@ public:
  */
 class Checker:public Thread{
 public:
-	Checker()
+	Checker():(ThreadNetworkManager *tnm):tnm(tnm)
 	{
 		valid = false;
 	}
@@ -114,7 +114,7 @@ public:
 					int OK = logic->check(conn,event);
 					if (OK)
 					{
-						event->doDelete();
+						event->delEvent(IN_EVT|OUT_EVT);
 						tnm->theWorker->addTarget(conn);
 					}
 					conn->doRead();
@@ -185,9 +185,15 @@ public:
 	{
 		for (unsigned int index = 0; index < checknum;index++)
 		{
-			Check *check = new Check();
+			Check *check = new Check(this);
 			check->start();
 			checkPool->add(check);
+		}
+		for (unsigned int index = 0; index < worknum;index++)
+		{
+			Worker *worker = new Worker(this);
+			worker->start();
+			workPool->add(worker);
 		}
 	}
 	ThreadGroup workPool;
