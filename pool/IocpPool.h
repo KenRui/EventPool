@@ -2,6 +2,8 @@
 #include <winsock2.h>
 #include <MSWSock.h>
 #pragma comment(lib,"ws2_32.lib")
+#include "../network.h"
+#include <list>
  namespace pool{
 	enum EVENT_TYPE{
 		ACCEPT_EVT = 1 << 0, // 初始化
@@ -20,6 +22,7 @@
 	{
 		
 	}
+	class EventBase;
 	/**
 	 * 目标基类
 	 */
@@ -28,6 +31,21 @@
 		virtual HANDLE getHandle() = 0;
 		virtual LPFN_ACCEPTEX getAcceptHandle(){return NULL;}
 		virtual HANDLE getPeerHandle() {return -1;}
+		EventBase *inEvt;
+		EventBase *outEvt;
+		Target()
+		{
+			inEvt = outEvt = NULL;
+		}
+		virtual void destroy()
+		{
+			if (inEvt)
+				delete inEvt;
+			if (outEvt)
+				delete outEvt;
+			inEvt = NULL;
+			outEvt = NULL;
+		}
 	};
 	/**
 	 * 事件基类
@@ -36,7 +54,7 @@
 	public:
 		Target * target; // 目标
 		OVERLAPPED     overlapped; 
-		EVENT_TYPE eventType;     // 标识网络操作的类型(对应上面的枚举)
+		int eventType;     // 标识网络操作的类型(对应上面的枚举)
 		virtual void deal() = 0;
 		EventBase(Target * target):target(target)
 		{
@@ -56,6 +74,12 @@
 		{
 			return eventType | ERR_EVT;
 		}
+		bool isAccept()
+		{
+			return eventType | ACCEPT_EVT;
+		}
+		virtual void redo() = 0;
+		static const unsigned int MAX_BUFFER_LEN = 8192;
 	};
 	/**
 	 * 事件
@@ -76,12 +100,14 @@
             return target;
         }
         
-		static const unsigned int MAX_BUFFER_LEN = 8192;
+		
 		                              // 每一个重叠网络操作的重叠结构(针对每一个Socket的每一个操作，都要有一个)              
 		WSABUF         m_wsaBuf;                                   // WSA类型的缓冲区，用于给重叠操作传参数的
 		char           buffer[MAX_BUFFER_LEN];                 // 这个是WSABUF里具体存字符的缓冲区
 		           
 		DWORD msgLen;
+		
+		HANDLE poolHandle; // 当前池句柄
 		void reset()
 		{
 			memset(buffer,0,MAX_BUFFER_LEN);
@@ -92,6 +118,7 @@
 			msgLen = 0;
 		}
 		virtual void deal(){};
+		virtual void redo(){deal();}
     };
 	/**
 	 * 读入事件
@@ -138,7 +165,7 @@
 			reset();
 			eventType = OUT_EVT;
 			p_wbuf->buf = buffer;
-			strcpy(buffer,"OK");
+			//strcpy(buffer,"OK");
 			int nBytesRecv = WSASend((SOCKET)target->getHandle(), p_wbuf, 1, &dwBytes, dwFlags, p_ol, NULL );
 			if ((SOCKET_ERROR == nBytesRecv) && (WSA_IO_PENDING != WSAGetLastError()))
 			{
@@ -200,18 +227,18 @@
 			 HANDLE tempHandle = CreateIoCompletionPort((HANDLE)target->getHandle(), poolHandle, (DWORD)target, 0);
 			 if (eventType & ACCEPT_EVT)
 			 {
-				AcceptEvent<Target> *initEvent = new AcceptEvent<Target>(target);
-				initEvent->deal();
+				target->inEvt = new AcceptEvent<Target>(target);
+				target->inEvt->deal();
 			 }
 			 if (eventType & IN_EVT)
 			 {
-				InEvent<Target> *inEvent = new InEvent<Target>(target);
-				inEvent->deal();
+				target->inEvt = new InEvent<Target>(target);
+				target->inEvt->deal();
 			 }
 			 if (eventType & OUT_EVT)
 			 {
-				OutEvent<Target> *outEvent = new OutEvent<Target>(target);
-				outEvent->deal();
+				target->outEvt = new OutEvent<Target>(target);
+				target->outEvt->deal();
 			 }
 		}
 
@@ -257,6 +284,16 @@
  namespace net{
 	 class Connection:public pool::Target{
 	 public:
+		 virtual void destroy()
+		 {
+			pool::Target::destroy();
+			closesocket(socket);
+		 }
+		 Connection()
+		 {
+			directDealCmd = true;
+			pointer = NULL;
+		 }
 		 HANDLE getHandle(){return (HANDLE)socket;}
 		 void setHandle(SOCKET socket){this->socket = socket;}
 		 
@@ -265,7 +302,7 @@
 		  */
 		 void sendCmd(void *cmd,unsigned int len)
 		 {
-			decoder->encode(cmd,len);
+			decoder.encode(cmd,len);
 			sends->push_back(decoder->getRecord());
 			doSend();
 		 }
@@ -274,6 +311,7 @@
 			// 回调中处理消息
 		 }
 		 Decoder decoder;
+		 bool directDealCmd;
 		 /** 
 		  * 获取消息
 		  */
@@ -284,14 +322,18 @@
 		 /**
 		  * 将消息接受到缓存
 		  **/
-		 unsigned int copy(void *cmd,unsigned int size)
+		 unsigned int recv(void *cmd,unsigned int size)
 		 {
 			unsigned int realcopy = 0;
 			while (recvs.size())
 			{
-				buffer = recvs.front();
-				realcopy = buffer->copy(cmd,size);
-				if (buffer->empty())buffers.pop_front();
+				Record *record = recvs.front();
+				realcopy = record->recv(cmd,size);
+				if (record->empty())
+				{
+					delete record;
+					buffers.pop_front();
+				}
 				if (realcopy == size)
 				{
 					return size;
@@ -299,7 +341,6 @@
 			}
 			return realcopy;
 		}
-		unsigned char *pointer;
 		
 		/**
 		 * 在pool 中处理接受
@@ -308,15 +349,14 @@
 		{
 			if (directDealCmd) // 直接处理消息
 			{
-				Buffer buffer(evt->m_wsaBuf.buf,evt->dataLen);
-				decoder.encode(&buffer);
+				Record record(evt->m_wsaBuf.buf,evt->dataLen);
+				decoder.encode(&record);
 			}
 			else
 			{
-				Record *buffer = new Record(evt->m_wsaBuf.buf,evt->dataLen);
-				recvs->push_back(buffer);
+				Record *record = new Record(evt->m_wsaBuf.buf,evt->dataLen);
+				recvs->push_back(record);
 				evt->redo();
-				pointer = evt->m_wsaBuf.buf;
 			}
 		}
 		/**
@@ -329,12 +369,13 @@
 			{
 				tag = true;
 				Record *record = sends.front();
-				int leftLen = MAX_DATASIZE;
-				unsigned int realCopySize = record->copy(evt->buffer,leftLen);
+				int leftLen = EventBase::MAX_BUFFER_LEN;
+				unsigned int realCopySize = record->recv(evt->buffer,leftLen);
 				if (leftLen == realCopySize)
 				{
 					if (record->empty())
 					{
+						delete record;
 						sends.pop_front();
 					}
 					break;
@@ -351,10 +392,6 @@
 			}
 			if (tag)
 				evt->redo();
-			else
-			{
-				evt->delEvent(OUT_EVT);
-			}
 		}
 		 // 当前事件 具有瞬时性
 		 SOCKET socket;

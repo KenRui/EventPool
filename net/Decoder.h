@@ -1,3 +1,5 @@
+#pragma once
+#include "../zip/zip.h"
 class Decoder{
 	Decoder(){
 		currentoffset = 0;
@@ -33,7 +35,7 @@ private:
 	bool pickdata(Record *record)
 	{
 		unsigned int left_size = leftsize();
-		int ret = record->copy(&contents[currentoffset],left_size);
+		int ret = record->recv(&contents[currentoffset],left_size);
 		if (ret < left_size)
 		{
 			currentoffset += ret;
@@ -77,6 +79,7 @@ private:
 			}break;
 		}
 	}
+	template<Record>
 	bool run(Record *record)
 	{
 		if ( currentoffset == contents.size())
