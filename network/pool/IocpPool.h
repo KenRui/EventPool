@@ -405,6 +405,31 @@ namespace pool{
 		 std::list<Record*> recvs;
 		 std::list<Record*> sends;
 	 };
+	 class Client:public Connection{
+	 public:
+		 Client(const char *ip,WORD port)
+		 {
+			init(ip,port);
+		 }
+		 void init(const char *ip,WORD port)
+		 {
+			 socket = ::socket(AF_INET,SOCK_STREAM,0);
+			if(socket == INVALID_SOCKET)
+			{
+				// TODO error
+			}
+			memset(&addrServer,0,sizeof(sockaddr_in));
+			addrServer.sin_family = AF_INET;
+			addrServer.sin_addr.s_addr = inet_addr(ip);
+			addrServer.sin_port = htons(port);
+
+			if(connect(socket,(const struct sockaddr *)&addrServer,sizeof(sockaddr)) != 0)
+			{
+				// TODO error
+			}
+		 }
+		 struct sockaddr_in addrServer;
+	 };
 	 class Server:public pool::Target{
 	 public:
 		Server(const char *ip,WORD port)

@@ -151,7 +151,7 @@ public:
 					unsigned char buffer[MAX_DATASIZE]={'\0'};
 					unsigned int retSize = unzip(buffer,MAX_DATASIZE,0);
 				}
-				else
+				else if (contents.size())
 				{
 					printf("ok %s\n",&contents[0]);
 				}

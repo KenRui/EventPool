@@ -14,7 +14,7 @@ char buf[24];
 
 int Init();
 
-int main(int argc, char* argv[])
+int main1(int argc, char* argv[])
 {
     if(Init() != 0)
         goto theend;
