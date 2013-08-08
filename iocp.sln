@@ -1,0 +1,32 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 10.00
+# Visual Studio 2008
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "client", "client\client.vcproj", "{8B992E33-3BA7-44C9-AF3C-8D8AA5396D16}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "iocp", "iocp\iocp.vcproj", "{34FCD475-F186-472A-B9A6-3831096E1EC8}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "network", "network\network.vcproj", "{648F0CD2-46D7-459D-BB55-989FFC7BC991}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8B992E33-3BA7-44C9-AF3C-8D8AA5396D16}.Debug|Win32.ActiveCfg = Debug|Win32
+		{8B992E33-3BA7-44C9-AF3C-8D8AA5396D16}.Debug|Win32.Build.0 = Debug|Win32
+		{8B992E33-3BA7-44C9-AF3C-8D8AA5396D16}.Release|Win32.ActiveCfg = Release|Win32
+		{8B992E33-3BA7-44C9-AF3C-8D8AA5396D16}.Release|Win32.Build.0 = Release|Win32
+		{34FCD475-F186-472A-B9A6-3831096E1EC8}.Debug|Win32.ActiveCfg = Debug|Win32
+		{34FCD475-F186-472A-B9A6-3831096E1EC8}.Debug|Win32.Build.0 = Debug|Win32
+		{34FCD475-F186-472A-B9A6-3831096E1EC8}.Release|Win32.ActiveCfg = Release|Win32
+		{34FCD475-F186-472A-B9A6-3831096E1EC8}.Release|Win32.Build.0 = Release|Win32
+		{648F0CD2-46D7-459D-BB55-989FFC7BC991}.Debug|Win32.ActiveCfg = Debug|Win32
+		{648F0CD2-46D7-459D-BB55-989FFC7BC991}.Debug|Win32.Build.0 = Debug|Win32
+		{648F0CD2-46D7-459D-BB55-989FFC7BC991}.Release|Win32.ActiveCfg = Release|Win32
+		{648F0CD2-46D7-459D-BB55-989FFC7BC991}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

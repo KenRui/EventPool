@@ -4,7 +4,7 @@
 #pragma comment(lib,"ws2_32.lib")
 #include "../network.h"
 #include <list>
- namespace pool{
+namespace pool{
 	enum EVENT_TYPE{
 		ACCEPT_EVT = 1 << 0, // 初始化
 		OUT_EVT = 1 << 1, // 读入
@@ -30,7 +30,7 @@
 	public:
 		virtual HANDLE getHandle() = 0;
 		virtual LPFN_ACCEPTEX getAcceptHandle(){return NULL;}
-		virtual HANDLE getPeerHandle() {return -1;}
+		virtual HANDLE getPeerHandle() {return NULL;}
 		EventBase *inEvt;
 		EventBase *outEvt;
 		Target()
@@ -46,6 +46,7 @@
 			inEvt = NULL;
 			outEvt = NULL;
 		}
+		virtual void doSend(pool::EventBase *evt){};
 	};
 	/**
 	 * 事件基类
@@ -55,28 +56,29 @@
 		Target * target; // 目标
 		OVERLAPPED     overlapped; 
 		int eventType;     // 标识网络操作的类型(对应上面的枚举)
+		unsigned dataLen; // 数据传输的长度
 		virtual void deal() = 0;
 		EventBase(Target * target):target(target)
 		{
 			
 		}
-		virtual HANDLE getPeerHandle() {return -1;}
+		virtual HANDLE getPeerHandle() {return NULL;}
 		
 		bool isIn()
 		{
-			return eventType | IN_EVT;
+			return eventType &IN_EVT;
 		}
 		bool isOut()
 		{
-			return eventType | OUT_EVT;
+			return eventType & OUT_EVT;
 		}
 		bool isErr()
 		{
-			return eventType | ERR_EVT;
+			return eventType & ERR_EVT;
 		}
 		bool isAccept()
 		{
-			return eventType | ACCEPT_EVT;
+			return eventType & ACCEPT_EVT;
 		}
 		virtual void redo() = 0;
 		static const unsigned int MAX_BUFFER_LEN = 8192;
@@ -93,7 +95,7 @@
 		}
         TARGET * operator->()
         {
-            return target;
+            return (TARGET*)target;
         }
         bool checkValid()
         {
@@ -108,13 +110,13 @@
 		DWORD msgLen;
 		
 		HANDLE poolHandle; // 当前池句柄
-		void reset()
+		virtual void reset()
 		{
 			memset(buffer,0,MAX_BUFFER_LEN);
 			memset(&overlapped,0,sizeof(overlapped));  
 			m_wsaBuf.buf = buffer;
 			m_wsaBuf.len = MAX_BUFFER_LEN;
-			eventType     = ERROR_EVT;
+			eventType     = 0;
 			msgLen = 0;
 		}
 		virtual void deal(){};
@@ -162,10 +164,8 @@
 			DWORD dwBytes = 0;
 			WSABUF *p_wbuf   = &m_wsaBuf;
 			OVERLAPPED *p_ol = &overlapped;
-			reset();
 			eventType = OUT_EVT;
 			p_wbuf->buf = buffer;
-			//strcpy(buffer,"OK");
 			int nBytesRecv = WSASend((SOCKET)target->getHandle(), p_wbuf, 1, &dwBytes, dwFlags, p_ol, NULL );
 			if ((SOCKET_ERROR == nBytesRecv) && (WSA_IO_PENDING != WSAGetLastError()))
 			{
@@ -192,7 +192,7 @@
 		void deal()
 		{
 			DWORD dwBytes = 0;  
-			eventType = INIT_EVT;  
+			eventType = ACCEPT_EVT;  
 			WSABUF *p_wbuf   = &m_wsaBuf;
 			OVERLAPPED *p_ol = &overlapped;
 			// 投递AcceptEx
@@ -205,7 +205,7 @@
 			}
 		}
 		SOCKET handle;
-		virtual HANDLE getPeerHandle() {return handle;}
+		virtual HANDLE getPeerHandle() {return (HANDLE)handle;}
 	};
 	/**
 	 * 事件池的封装
@@ -238,7 +238,7 @@
 			 if (eventType & OUT_EVT)
 			 {
 				target->outEvt = new OutEvent<Target>(target);
-				target->outEvt->deal();
+				target->doSend(target->outEvt);
 			 }
 		}
 
@@ -292,7 +292,6 @@
 		 Connection()
 		 {
 			directDealCmd = true;
-			pointer = NULL;
 		 }
 		 HANDLE getHandle(){return (HANDLE)socket;}
 		 void setHandle(SOCKET socket){this->socket = socket;}
@@ -302,9 +301,11 @@
 		  */
 		 void sendCmd(void *cmd,unsigned int len)
 		 {
+			Decoder  decoder;
 			decoder.encode(cmd,len);
-			sends->push_back(decoder->getRecord());
-			doSend();
+			sends.push_back(decoder.getRecord());
+			if (outEvt)
+				doSend(outEvt);
 		 }
 		 void recvCmdCallback(void *cmd,unsigned int len)
 		 {
@@ -317,7 +318,7 @@
 		  */
 		 unsigned int getCmd(void *cmd,unsigned int len)
 		 {
-			return decoder->recv(this,buffer,MAX_DATALEN);
+			return decoder.decode(this,cmd,len);
 		 }
 		 /**
 		  * 将消息接受到缓存
@@ -332,7 +333,7 @@
 				if (record->empty())
 				{
 					delete record;
-					buffers.pop_front();
+					recvs.pop_front();
 				}
 				if (realcopy == size)
 				{
@@ -345,32 +346,38 @@
 		/**
 		 * 在pool 中处理接受
 		 **/
-		void doRead(EventBase *evt)
+		 void doRead(pool::EventBase *evt)
 		{
+			pool::Event<Connection>* event = static_cast<pool::Event<Connection>*>( evt );
 			if (directDealCmd) // 直接处理消息
 			{
-				Record record(evt->m_wsaBuf.buf,evt->dataLen);
-				decoder.encode(&record);
+				Record record(event->m_wsaBuf.buf,evt->dataLen);
+				decoder.decode(&record);
 			}
 			else
 			{
-				Record *record = new Record(evt->m_wsaBuf.buf,evt->dataLen);
-				recvs->push_back(record);
-				evt->redo();
+				Record *record = new Record(event->m_wsaBuf.buf,evt->dataLen);
+				recvs.push_back(record);
 			}
+			evt->redo();
 		}
 		/**
 		 * 在pool 中处理发送
 		 **/
-		void doSend(EventBase *evt)
+		void doSend(pool::EventBase *evt)
 		{
 			bool tag = false;
-			while (send.size())
+			
+			pool::Event<Connection>* event = static_cast<pool::Event<Connection>*>( evt );
+			event->dataLen = 0;
+			event->reset();
+			while (sends.size())
 			{
 				tag = true;
 				Record *record = sends.front();
-				int leftLen = EventBase::MAX_BUFFER_LEN;
-				unsigned int realCopySize = record->recv(evt->buffer,leftLen);
+				int leftLen = pool::EventBase::MAX_BUFFER_LEN;
+				unsigned int realCopySize = record->recv(event->buffer,leftLen);
+				evt->dataLen += realCopySize;
 				if (leftLen == realCopySize)
 				{
 					if (record->empty())

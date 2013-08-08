@@ -1,6 +1,0 @@
-提供lua版的消息收发机制 主要的协议是json
-
-
-recv(json)
-
-send(json);
